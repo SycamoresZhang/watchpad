@@ -4,6 +4,8 @@
 
 把 Apple Watch 变成 Mac 的触控板：整屏纯黑触控区，表冠当滚轮，长按出右键。
 
+![WatchPad 演示](docs/demo.gif)
+
 > 基于 [umarz317/WatchPointer](https://github.com/umarz317/WatchPointer)（MIT）改造，手表端与 Mac 端都做了较大重写。
 
 ## 功能
