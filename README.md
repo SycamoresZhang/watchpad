@@ -24,27 +24,30 @@
 - 屏幕映射放大显示，展开时内容随面板边缘一起裁剪出现
 - 平滑滚动实现（45 ms 静默收尾），硬停模式（丢弃余量）
 
+## 仓库结构
+
+- `WatchPointer/` + `WatchPointer.xcodeproj` — 手表端（Xcode 工程）
+- `Mac/` — Mac 接收端（SwiftPM 工程）
+
 ## 编译
 
-要求：Xcode 26（watchOS 26 SDK）。
+手表端要求 Xcode 26（watchOS 26 SDK），在仓库根目录：
 
 ```
-cd WatchPad
 xcodebuild -project WatchPointer.xcodeproj -scheme WatchPointer \
   -configuration Debug -destination 'generic/platform=watchOS' \
   -allowProvisioningUpdates build
 ```
 
-**先改签名再编译**：`WatchPointer.xcodeproj` 里的 Team 与 Bundle Identifier 需要换成你自己的，否则装不上表（原作者的 Team 会导致注册失败）。
+**先改签名再编译**：`WatchPointer.xcodeproj` 里的 Team 与 Bundle Identifier 需要换成你自己的，否则装不上表。
 
-Mac 端为 SwiftPM 工程：
+Mac 端（macOS 13+）：
 
 ```
-cd Mac
-swift build -c release
+cd Mac && swift build -c release
 ```
 
-产物在 `.build/arm64-apple-macosx/release/WatchPointer`，需要授予辅助功能权限。
+产物在 `Mac/.build/arm64-apple-macosx/release/WatchPointer`。首次运行需在 系统设置 → 隐私与安全性 → 辅助功能 中授权。
 
 ## 安装到手表
 
