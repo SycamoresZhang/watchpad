@@ -34,7 +34,7 @@ let fallbackRewind = 0.1
 /// `.info`: [kind, JSON] describing the watch (see WatchInfo), not the fixed 5 bytes.
 /// `.drag`: a = 1 grab (mouse down), 0 drop (mouse up).
 /// Clicks and drags may add the same UInt16 ms time as `.aim`: when the thumb touched down (or lifted, for a drop).
-enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, scrollMode = 9, keepAlive = 10 }
+enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, scrollMode = 9, keepAlive = 10, smoothDelay = 11 }
 
 /// 1€ filter (Casiez et al. 2012): heavy smoothing when the hand is nearly still (no jitter),
 /// almost none when it moves fast (no lag). The standard choice for pointing devices.
@@ -84,6 +84,13 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     private var moveQueueX = 0.0
     private var moveQueueY = 0.0
     private var lastMoveFeed = 0.0
+    /// Jitter-buffer time constant, adjustable from the watch (smoothDelay = 11). 0 = pass packets through.
+    private var smoothMs = 20.0
+    /// Double/triple-click bookkeeping for synthesized mouse events.
+    private var clickCount = 1
+    private var lastClickAt = 0.0
+    private var lastClickPoint = CGPoint.zero
+    private var lastClickButton: CGMouseButton?
     private var samplesThisSecond = 0
     private var rate = 0
     private var frameTimer: DispatchSourceTimer?
@@ -199,6 +206,9 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
                 log("watch connected")
                 setPhase(.live, toast: .connected)
             }
+        case .smoothDelay:
+            smoothMs = max(0, min(200, Double(a)))
+            log("cursor smoothing \(Int(smoothMs)) ms")
         case .scrollMode:
             smoothScroll = a == 0
             scrollActive = false
@@ -385,11 +395,11 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         // a burst of packets that arrived together becomes one continuous slide instead of a jump.
         if moveQueueX != 0 || moveQueueY != 0 {
             let base = target ?? shown
-            if now - lastMoveFeed > 0.05 { // finger went quiet: let the remainder out at once
+            if now - lastMoveFeed > max(0.05, smoothMs / 1000 * 2.5) { // quiet: flush the remainder
                 target = Displays.clamp(CGPoint(x: base.x + moveQueueX, y: base.y + moveQueueY))
                 moveQueueX = 0; moveQueueY = 0
             } else {
-                let release = 1 - exp(-(1.0 / 240) / 0.020)
+                let release = 1 - exp(-(1.0 / 240) / max(0.002, smoothMs / 1000))
                 let rx = moveQueueX * release, ry = moveQueueY * release
                 moveQueueX -= rx; moveQueueY -= ry
                 target = Displays.clamp(CGPoint(x: base.x + rx, y: base.y + ry))
@@ -459,17 +469,31 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         return before.point
     }
 
-    private func post(_ type: CGEventType, _ p: CGPoint, _ button: CGMouseButton = .left) {
-        CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: button)?.post(tap: .cghidEventTap)
+    private func post(_ type: CGEventType, _ p: CGPoint, _ button: CGMouseButton = .left, _ clickState: Int64 = 1) {
+        let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: button)
+        event?.setIntegerValueField(.mouseEventClickState, value: clickState)
+        event?.post(tap: .cghidEventTap)
     }
 
     private func click(_ button: CGMouseButton, at time: Double?) {
         let p = pressPoint(at: time)
         post(dragging ? .leftMouseDragged : .mouseMoved, p)
+        // Synthesized events only count as a double-click when the second press carries click state 2;
+        // without it two taps read as two unrelated single clicks and files never "open".
+        let now = ProcessInfo.processInfo.systemUptime
+        if lastClickButton == button, now - lastClickAt < 0.5,
+           abs(p.x - lastClickPoint.x) + abs(p.y - lastClickPoint.y) < 8 {
+            clickCount = min(clickCount + 1, 3)
+        } else {
+            clickCount = 1
+        }
+        lastClickAt = now
+        lastClickPoint = p
+        lastClickButton = button
         let (down, up): (CGEventType, CGEventType) = button == .left ? (.leftMouseDown, .leftMouseUp)
                                                                      : (.rightMouseDown, .rightMouseUp)
-        post(down, p, button)
-        post(up, p, button)
+        post(down, p, button, Int64(clickCount))
+        post(up, p, button, Int64(clickCount))
     }
 
     /// Mouse down where the pointer was when the thumb pressed; following aim then drags.
