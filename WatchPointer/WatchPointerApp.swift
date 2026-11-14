@@ -23,7 +23,7 @@ struct WatchPointerApp: App {
 /// `.drag`: a = 1 grab (mouse down), 0 drop (mouse up).
 /// `.move`: a = dx, b = dy — the finger moved the pad by this many Mac pixels (trackpad mode).
 /// Clicks and drags may add the same UInt16 ms time as `.aim`: when the thumb touched down (or lifted, for a drop).
-enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, scrollMode = 9, keepAlive = 10 }
+enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, scrollMode = 9, keepAlive = 10, smoothDelay = 11 }
 
 /// Press again and keep the finger perfectly still this long before it grabs (drag). Moving cancels it.
 let holdToDrag = 1.0
@@ -110,6 +110,11 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     func setScrollMode(_ mode: Int16) {
         scrollModeValue = mode
         send(.scrollMode, mode)
+    }
+
+    /// Cursor smoothing time constant, in milliseconds; 0 turns the jitter buffer off entirely.
+    func setSmoothDelay(_ ms: Int16) {
+        send(.smoothDelay, ms)
     }
 
     /// Whatever direction the watch points now becomes the middle of the screen.

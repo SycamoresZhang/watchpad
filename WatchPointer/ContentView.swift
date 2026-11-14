@@ -20,6 +20,7 @@ struct ContentView: View {
     @AppStorage("holdSeconds") private var holdSeconds = 1.0
     @AppStorage("scrollMode") private var scrollMode = 0   // 0 = 顺滑, 1 = 硬停
     @AppStorage("crownInverted") private var crownInverted = false
+    @AppStorage("smoothMs") private var smoothMs = 20
 
     var body: some View {
         NavigationStack {
@@ -42,8 +43,10 @@ struct ContentView: View {
             .onAppear {
                 crownFocused = true
                 pointer.setScrollMode(Int16(scrollMode))
+                pointer.setSmoothDelay(Int16(smoothMs))
             }
             .onChange(of: scrollMode) { _, mode in pointer.setScrollMode(Int16(mode)) }
+            .onChange(of: smoothMs) { _, ms in pointer.setSmoothDelay(Int16(ms)) }
             .onChange(of: pointer.connected) { crownFocused = true }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -56,7 +59,8 @@ struct ContentView: View {
                         crownSensitivity: $crownSensitivity,
                         holdSeconds: $holdSeconds,
                         scrollMode: $scrollMode,
-                        crownInverted: $crownInverted)
+                        crownInverted: $crownInverted,
+                        smoothMs: $smoothMs)
             }
     }
 }
@@ -186,6 +190,7 @@ private struct PadMenu: View {
     @Binding var holdSeconds: Double
     @Binding var scrollMode: Int
     @Binding var crownInverted: Bool
+    @Binding var smoothMs: Int
     @Environment(\.dismiss) private var dismiss
 
     @State private var confirmForget = false
@@ -280,6 +285,13 @@ private struct PadMenu: View {
                       value: String(format: "%.1f 秒", holdSeconds),
                       binding: $holdSeconds,
                       range: 0.4...2.0)
+            SliderRow(title: "光标平滑",
+                      value: smoothMs == 0 ? "直出" : String(format: "%.0f ms", Double(smoothMs)),
+                      binding: Binding(
+                        get: { Double(smoothMs) },
+                        set: { smoothMs = Int($0) }),
+                      range: 0...40,
+                      gradations: 20)
             scrollModeCard
             invertCard
         }
@@ -398,8 +410,9 @@ private struct SliderRow: View {
     private var indexBinding: Binding<Double> {
         Binding {
             let low = range.lowerBound, high = range.upperBound
-            guard high > low, low > 0 else { return 0 }
+            guard high > low else { return 0 }
             if logarithmic {
+                guard low > 0 else { return 0 } // geometric steps need a positive base
                 return (log(binding / low) / log(high / low) * Double(gradations)).rounded()
             }
             return ((binding - low) / (high - low) * Double(gradations)).rounded()
